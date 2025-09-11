@@ -175,3 +175,6 @@ For support, please:
 ---
 
 **Built by [Aime-Rick](https://github.com/Aime-Rick)**
+
+**[Frontend link](https://github.com/Aime-Rick/AIDrive_frontend)**
+
