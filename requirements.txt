@@ -17,4 +17,3 @@ librosa
 moviepy
 speechrecognition
 python-dotenv
-jina-embeddings-v2
