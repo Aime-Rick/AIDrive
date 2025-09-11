@@ -41,6 +41,7 @@ SCOPES = ["https://www.googleapis.com/auth/drive.file",
           "https://www.googleapis.com/auth/drive"]  # Scope for Google Ads
 
 REDIRECT_URI = "http://localhost:8000/oauth2callback"
+FRONTEND_URL = "http://localhost:5173/"  # Change to your frontend URL
 
 @app.on_event("startup")
 async def startup_event():
@@ -176,6 +177,9 @@ def oauth2callback(request: Request):
         "scopes": list(credentials.scopes)
     }
     save_user_credentials(creds)
+
+    # Redirect to frontend with success message
+    return RedirectResponse(FRONTEND_URL + "?status=connected")
 
 
 
