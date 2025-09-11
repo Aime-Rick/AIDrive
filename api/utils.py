@@ -48,13 +48,42 @@ def save_user_credentials(data: dict):
     """
     Saves user credentials to the database.
     """
-    response = supabase.table("credentials").upsert(data).execute()
-    return response
+    try:
+        user = supabase.auth.get_user()
+        if user.user:
+            data["user_id"] = user.user.id
+        response = supabase.table("credentials").upsert(data).execute()
+        return response
+    except Exception as e:
+        print(f"Error saving user credentials: {e}")
+        raise e
 
 def get_user_credentials():
     """
     Retrieves user credentials from the database.
     """
-    user_id = supabase.auth.get_user().user.id
-    response = supabase.table("credentials").select("*").eq("user_id", user_id).execute()
-    return response.data
+    try:
+        user = supabase.auth.get_user()
+        if not user.user:
+            return []
+        user_id = user.user.id
+        response = supabase.table("credentials").select("*").eq("user_id", user_id).execute()
+        return response.data
+    except Exception as e:
+        print(f"Error getting user credentials: {e}")
+        return []
+    
+def delete_user_credentials():
+    """
+    Deletes user credentials from the database.
+    """
+    try:
+        user = supabase.auth.get_user()
+        if not user.user:
+            raise Exception("User not authenticated")
+        user_id = user.user.id
+        response = supabase.table("credentials").delete().eq("user_id", user_id).execute()
+        return response
+    except Exception as e:
+        print(f"Error deleting user credentials: {e}")
+        raise e

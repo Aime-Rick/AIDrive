@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, HTMLResponse, Response
 import google_auth_oauthlib.flow
 import os
@@ -7,20 +8,31 @@ from api.schemas import (
     StandardResponse, UserRequest, UploadFileRequest, CreateFolderRequest, 
     DownloadFileRequest, PopulateVectorDBRequest, QueryRequest
 )
-from api.utils import create_user, sign_in_user, sign_out_user, delete_user, save_user_credentials
+from api.utils import create_user, sign_in_user, sign_out_user, delete_user, save_user_credentials, get_user
 from rag.drive_utils import upload_to_drive, get_drive_contents, create_drive_folder, download_file
 from rag.load import load_any_file, populate_vector_db
 from rag.retrieve import generate_answer
+from dotenv import load_dotenv
 
 
 # FastAPI app
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins="*",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Add session middleware for OAuth state management
 # Simple in-memory session store (use Redis/DB in production)
 session_store = {}
 
-CLIENT_SECRETS_FILE = "client_secret.json"
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Only for development
+
+CLIENT_SECRETS_FILE = "/home/ricko/AIDrive/api/client_secret.json"
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file",
           "https://www.googleapis.com/auth/drive.install",
@@ -29,6 +41,20 @@ SCOPES = ["https://www.googleapis.com/auth/drive.file",
           "https://www.googleapis.com/auth/drive"]  # Scope for Google Ads
 
 REDIRECT_URI = "http://localhost:8000/oauth2callback"
+
+@app.on_event("startup")
+async def startup_event():
+    """Initializes the survey agent on application startup."""
+    load_dotenv() 
+
+@app.get("/users/me", response_model=StandardResponse, tags=["Users"])
+async def get_current_user():
+    """Retrieves the current user's information."""
+    try:
+        response = get_user()
+        return {"status": "success", "data": response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve user info: {e}")
 
 
 @app.post("/users/signup", response_model=StandardResponse, tags=["Users"])
@@ -69,6 +95,27 @@ async def delete_user_api(user_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"User deletion failed: {e}")
 
+@app.get("/drive/connection-status", response_model=StandardResponse, tags=["Drive"])
+async def get_drive_connection_status():
+    """Check if the current user has Google Drive connected."""
+    try:
+        from api.utils import get_user_credentials
+        credentials = get_user_credentials()
+        is_connected = len(credentials) > 0
+        return {"status": "success", "data": {"is_connected": is_connected}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check connection status: {e}")
+
+
+@app.delete("/drive/disconnect", response_model=StandardResponse, tags=["Drive"])
+async def disconnect_drive():
+    """Disconnect Google Drive by removing user credentials."""
+    try:
+        from api.utils import delete_user_credentials
+        delete_user_credentials()
+        return {"status": "success", "data": {"message": "Google Drive disconnected successfully"}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to disconnect Drive: {e}")
 
 # app.get("/entry")
 # def index():
@@ -120,6 +167,7 @@ def oauth2callback(request: Request):
 
     # Save tokens in session (in real app: save securely in DB)
     creds = {
+        "user_id": get_user().id,
         "token": credentials.token,
         "refresh_token": credentials.refresh_token,
         "token_uri": credentials.token_uri,
@@ -128,7 +176,7 @@ def oauth2callback(request: Request):
         "scopes": list(credentials.scopes)
     }
     save_user_credentials(creds)
-    return {"status": "success", "data": "Credentials saved successfully."}
+
 
 
 # --- Drive Management Endpoints ---
@@ -147,8 +195,8 @@ async def upload_file_to_drive(
             temp_file_path = temp_file.name
         
         # Upload to Drive
-        file_id = upload_to_drive(temp_file_path, file.filename, folder_id)
-        
+        file_id = await upload_to_drive(temp_file_path, file.filename, folder_id)
+        load_any_file(file_id, "." + file.filename.split(".")[-1] if "." in file.filename else "")
         # Clean up temporary file
         os.unlink(temp_file_path)
         
