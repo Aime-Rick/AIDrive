@@ -16,7 +16,8 @@ import librosa
 import soundfile as sf
 import tempfile
 from moviepy.video.io import VideoFileClip
-
+from .drive_utils import get_user_credentials
+from google.oauth2.credentials import Credentials
 
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = os.environ.get("SUPABASE_KEY")
@@ -36,9 +37,17 @@ def chunk_text(text, chunk_size=1000, overlap=200):
     return chunks
 
 def load_documents():
+    creds_dict = get_user_credentials()[0]
+    credentials = Credentials(
+            token=creds_dict.get("token"),
+            refresh_token=creds_dict.get("refresh_token"),
+            token_uri=creds_dict.get("token_uri"),
+            client_id=creds_dict.get("client_id"),
+            client_secret=creds_dict.get("client_secret"),
+            scopes=creds_dict.get("scopes", [])
+        )
     loader = GoogleDriveLoader(
-        credentials_path="/home/ricko/ai-drive/rag/credentials/credentials.json",
-        token_path="/home/ricko/ai-drive/rag/credentials/token.json",
+        credentials=credentials,
         folder_id="root",
         file_types=["document", "pdf"],
         recursive=True,
@@ -70,9 +79,17 @@ def load_document(file_id, ext=None):
             temp_file.flush()
             loader = TextLoader(temp_file.name, encoding="utf-8")
     else:
+        creds_dict = get_user_credentials()[0]
+        credentials = Credentials(
+            token=creds_dict.get("token"),
+            refresh_token=creds_dict.get("refresh_token"),
+            token_uri=creds_dict.get("token_uri"),
+            client_id=creds_dict.get("client_id"),
+            client_secret=creds_dict.get("client_secret"),
+            scopes=creds_dict.get("scopes", [])
+        )
         loader = GoogleDriveLoader(
-            credentials_path="/home/ricko/ai-drive/rag/credentials/credentials.json",
-            token_path="/home/ricko/ai-drive/rag/credentials/token.json",
+            credentials=credentials,
             file_ids=[file_id],
             scopes=["https://www.googleapis.com/auth/drive.file"]
         )

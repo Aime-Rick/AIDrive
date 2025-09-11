@@ -87,3 +87,31 @@ def delete_user_credentials():
     except Exception as e:
         print(f"Error deleting user credentials: {e}")
         raise e
+
+def get_store_status():
+    """
+    Stores the status of a process in the database.
+    """
+    user_id = get_user().id
+
+    response = (
+    supabase.table("credentials")
+    .select("store_status")
+    .eq("user_id", user_id)
+    .execute()
+    )
+    if response.data:
+        return response.data[0]["store_status"]
+    return None
+
+def update_store_status(status: bool):
+    """
+    Updates the status of a process in the database.
+    """
+    user_id = get_user().id
+    response = (
+        supabase.table("credentials")
+        .update({"store_status": status})
+        .eq("user_id", user_id)
+        .execute()
+    )

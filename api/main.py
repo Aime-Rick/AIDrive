@@ -8,7 +8,7 @@ from api.schemas import (
     StandardResponse, UserRequest, UploadFileRequest, CreateFolderRequest, 
     DownloadFileRequest, PopulateVectorDBRequest, QueryRequest
 )
-from api.utils import create_user, sign_in_user, sign_out_user, delete_user, save_user_credentials, get_user
+from api.utils import create_user, sign_in_user, sign_out_user, delete_user, save_user_credentials, get_user, get_store_status, update_store_status
 from rag.drive_utils import upload_to_drive, get_drive_contents, create_drive_folder, download_file
 from rag.load import load_any_file, populate_vector_db
 from rag.retrieve import generate_answer
@@ -262,6 +262,31 @@ async def download_and_load_file(request: DownloadFileRequest):
 
 # --- Vector Database Endpoints ---
 
+@app.get("/vector-db/status", response_model=StandardResponse, tags=["Vector Database"])
+async def get_vector_database_status():
+    """Check if the vector database has been initialized and contains data."""
+    try:
+        is_initialized = get_store_status()
+        
+        return {
+            "status": "success", 
+            "data": {
+                "is_initialized": is_initialized,
+                "message": "Database is initialized and ready" if is_initialized else "Database needs initialization"
+            }
+        }
+        
+    except Exception as e:
+        # If any error occurs, assume database is not initialized
+        return {
+            "status": "success", 
+            "data": {
+                "is_initialized": False,
+                "message": f"Database not initialized: {str(e)}"
+            }
+        }
+
+
 @app.post("/vector-db/populate", response_model=StandardResponse, tags=["Vector Database"])
 async def populate_vector_database(request: PopulateVectorDBRequest):
     """Populate the vector database with files from Google Drive."""
@@ -294,7 +319,8 @@ async def initialize_vector_database():
     try:
         files = get_drive_contents()
         populate_vector_db(files)
-        
+        update_store_status(True)
+
         return {
             "status": "success", 
             "data": {
