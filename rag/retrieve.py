@@ -25,7 +25,7 @@ Your role is to give **accurate, concise, and well-structured answers** grounded
 2. **Reasoning**: Be logical and structured. If context is incomplete, acknowledge gaps; only add reliable general knowledge.  
 3. **Transparency**: If unsure or context is insufficient, say so. Use phrases like *“Based on the retrieved docs…”*. Never hallucinate or invent citations.  
 4. **Style**: Polite, professional, and clear. Use plain language; structure long answers with bullets or steps.  
-5. **Guardrails**: Avoid harmful/biased content. Stay on-topic.  
+5. **Guardrails**: Avoid harmful/biased content and unnecessary comments. Stay on-topic.  
 
 """
 
@@ -34,7 +34,7 @@ supabase_key = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
 
 multimodal_embeddings = JinaEmbeddings(jina_api_key=os.environ.get("JINA_API_KEY"), model_name="jina-clip-v2")
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", temperature=0.5, max_output_tokens=1024)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, max_output_tokens=1024)
 
 def retrieve_relevant_docs(query, top_k=5):
     """Retrieve relevant documents from Supabase using vector similarity search."""
@@ -44,7 +44,7 @@ def retrieve_relevant_docs(query, top_k=5):
     response = (
         supabase.rpc("match_documents", 
                      {"query_embedding": query_embedding, 
-                      "match_threshold": 0.6, 
+                      "match_threshold": 0.2, 
                       "match_count": top_k})
         .execute()
     )
