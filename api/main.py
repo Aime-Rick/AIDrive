@@ -40,8 +40,28 @@ SCOPES = ["https://www.googleapis.com/auth/drive.file",
           "https://www.googleapis.com/auth/drive.metadata",
           "https://www.googleapis.com/auth/drive"]  # Scope for Google Ads
 
-REDIRECT_URI = "http://localhost:8000/oauth2callback"
-FRONTEND_URL = "http://localhost:5173/"  # Change to your frontend URL
+REDIRECT_URI = os.getenv('REDIRECT_URI', 'http://localhost:8000/oauth2callback')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000/')  # Change to your frontend URL
+
+def get_oauth_config():
+    """Get OAuth configuration from environment variables or fallback to JSON file."""
+    # Try to get from environment variables first
+    if all([
+        os.getenv('GOOGLE_CLIENT_ID'),
+        os.getenv('GOOGLE_CLIENT_SECRET'),
+        os.getenv('GOOGLE_PROJECT_ID')
+    ]):
+        return {
+            "web": {
+                "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+                "project_id": os.getenv('GOOGLE_PROJECT_ID'),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_secret": os.getenv('GOOGLE_CLIENT_SECRET'),
+                "redirect_uris": [os.getenv('REDIRECT_URI', 'http://localhost:8000/oauth2callback')]
+            }
+        }
 
 @app.on_event("startup")
 async def startup_event():
@@ -128,8 +148,9 @@ async def disconnect_drive():
 @app.get("/authorize")
 def authorize(request: Request):
     """Step 1: Redirect user to Google's OAuth2 consent screen."""
-    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE,
+    config = get_oauth_config()
+    flow = google_auth_oauthlib.flow.Flow.from_client_config(
+        config,
         scopes=SCOPES
     )
     flow.redirect_uri = REDIRECT_URI
@@ -150,10 +171,10 @@ def authorize(request: Request):
 def oauth2callback(request: Request):
     """Step 2: Handle Google's redirect and exchange code for tokens."""
     state = session_store.get("oauth_state")
-
+    config = get_oauth_config()
     # Recreate flow object with state
-    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE,
+    flow = google_auth_oauthlib.flow.Flow.from_client_config(
+        config,
         scopes=SCOPES,
         state=state
     )
