@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse, Response
 import google_auth_oauthlib.flow
 import os
 import tempfile
+import logging
 from api.schemas import (
     StandardResponse, UserRequest, UploadFileRequest, CreateFolderRequest, 
     DownloadFileRequest, PopulateVectorDBRequest, QueryRequest
@@ -20,11 +21,19 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "https://ai-drive.aime-rick.me"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=False,  # Set to False when using allow_origins=["*"]
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"Request: {request.method} {request.url}")
+    response = await call_next(request)
+    print(f"Response: {response.status_code}")
+    return response
 
 # Add session middleware for OAuth state management
 # Simple in-memory session store (use Redis/DB in production)
@@ -220,7 +229,7 @@ async def upload_file_to_drive(
             temp_file_path = temp_file.name
         
         # Upload to Drive
-        file_id = upload_to_drive(temp_file_path, file.filename, folder_id)
+        file_id = await upload_to_drive(temp_file_path, file.filename, folder_id)
         load_any_file(file_id, "." + file.filename.split(".")[-1] if "." in file.filename else "")
         # Clean up temporary file
         os.unlink(temp_file_path)
@@ -257,7 +266,7 @@ async def create_folder(request: CreateFolderRequest):
         raise HTTPException(status_code=500, detail=f"Folder creation failed: {e}")
 
 
-@app.post("/drive/download", tags=["Drive"])
+@app.post("/drive/download", response_model=StandardResponse, tags=["Drive"])
 async def download_and_load_file(request: DownloadFileRequest):
     """Download a file from Google Drive and load it to Supabase."""
     try:
@@ -384,4 +393,12 @@ async def query_documents(request: QueryRequest):
 async def health_check():
     """Health check endpoint."""
     return {"status": "success", "data": {"message": "API is running"}}
+
+
+# --- OPTIONS handler for CORS preflight ---
+
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    """Handle OPTIONS requests for CORS preflight."""
+    return Response(status_code=200)
 
