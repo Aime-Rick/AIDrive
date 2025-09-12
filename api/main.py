@@ -220,7 +220,7 @@ async def upload_file_to_drive(
             temp_file_path = temp_file.name
         
         # Upload to Drive
-        file_id = await upload_to_drive(temp_file_path, file.filename, folder_id)
+        file_id = upload_to_drive(temp_file_path, file.filename, folder_id)
         load_any_file(file_id, "." + file.filename.split(".")[-1] if "." in file.filename else "")
         # Clean up temporary file
         os.unlink(temp_file_path)
