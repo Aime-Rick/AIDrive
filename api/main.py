@@ -32,7 +32,7 @@ session_store = {}
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Only for development
 
-CLIENT_SECRETS_FILE = "/home/ricko/AIDrive/api/client_secret.json"
+CLIENT_SECRETS_FILE = "/home/ricko/AIDrive/rag/credentials/credentials.json"
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file",
           "https://www.googleapis.com/auth/drive.install",
@@ -213,17 +213,39 @@ async def upload_file_to_drive(
 ):
     """Upload a file to Google Drive."""
     try:
+        print(f"Starting upload for file: {file.filename}")
+        print(f"File size: {file.size if hasattr(file, 'size') else 'unknown'}")
+        print(f"Content type: {file.content_type}")
+        print(f"Target folder ID: {folder_id}")
+        
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
             content = await file.read()
             temp_file.write(content)
             temp_file_path = temp_file.name
         
+        print(f"Temporary file saved to: {temp_file_path}")
+        
         # Upload to Drive
-        file_id = await upload_to_drive(temp_file_path, file.filename, folder_id)
-        load_any_file(file_id, "." + file.filename.split(".")[-1] if "." in file.filename else "")
+        print("Uploading to Google Drive...")
+        file_id = upload_to_drive(temp_file_path, file.filename, folder_id)
+        print(f"File uploaded successfully with ID: {file_id}")
+        
+        # Load file for processing
+        print("Loading file for processing...")
+        try:
+            load_any_file(file_id, "." + file.filename.split(".")[-1] if "." in file.filename else "")
+            print("File processed successfully")
+        except Exception as load_error:
+            print(f"Warning: File uploaded but processing failed: {load_error}")
+            # Don't fail the entire upload if processing fails
+        
         # Clean up temporary file
-        os.unlink(temp_file_path)
+        try:
+            os.unlink(temp_file_path)
+            print(f"Temporary file cleaned up: {temp_file_path}")
+        except Exception as cleanup_error:
+            print(f"Warning: Could not clean up temporary file: {cleanup_error}")
         
         if file_id:
             return {"status": "success", "data": {"file_id": file_id, "message": "File uploaded successfully"}}
@@ -231,6 +253,10 @@ async def upload_file_to_drive(
             raise HTTPException(status_code=500, detail="Failed to upload file to Drive")
             
     except Exception as e:
+        print(f"Upload endpoint error: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
 
 
