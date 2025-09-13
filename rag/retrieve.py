@@ -1,10 +1,8 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from langchain_community.embeddings import JinaEmbeddings
 from supabase.client import Client, create_client
 from dotenv import load_dotenv
-from pprint import pprint
 import re
 
 base64_image_regex = re.compile(
@@ -44,7 +42,7 @@ def retrieve_relevant_docs(query, top_k=5):
     response = (
         supabase.rpc("match_documents", 
                      {"query_embedding": query_embedding, 
-                      "match_threshold": 0.2, 
+                      "match_threshold": 0.6, 
                       "match_count": top_k})
         .execute()
     )
@@ -63,11 +61,11 @@ def generate_answer(query, top_k=5):
     
     if images:
         for image in images:
+            if "jpg" in image :
+                image = image.replace("jpg", "jpeg")
             element= {
-                "type": "image",
-                "source_type": "base64",
-                "data": image,
-                "mime_type": "image/jpeg" if "jpeg" in image else "image/png"
+                "type": "image_url",
+                "image_url": image,
             }
             content.append(element)
 
@@ -75,8 +73,13 @@ def generate_answer(query, top_k=5):
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": content}
         ]
-    
-    response = llm.invoke(messages)
+    try:
+        
+        response = llm.invoke(messages)
+
+    except Exception as e:
+        print("Error during LLM invocation:", e)
+        return "I'm sorry, but I'm currently unable to process your request."
     return response.text()
     
 
