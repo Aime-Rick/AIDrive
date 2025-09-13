@@ -15,7 +15,7 @@ import noisereduce as nr
 import librosa
 import soundfile as sf
 import tempfile
-from moviepy.video.io import VideoFileClip
+from moviepy import VideoFileClip
 from .drive_utils import get_user_credentials
 from google.oauth2.credentials import Credentials
 
@@ -65,19 +65,37 @@ def load_documents():
     print(f"Loaded {len(docs)} documents from Google Drive")
 
 def load_document(file_id, ext=None):
+    documents = []
+    
     if ext==".docx":
         doc_byte = download_file(file_id)
-        with tempfile.NamedTemporaryFile(suffix=ext) as temp_file:
+        # Use delete=False to keep the file until we manually delete it
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_file:
             temp_file.write(doc_byte)
             temp_file.flush()
-            loader = Docx2txtLoader(temp_file.name) 
+            temp_file_path = temp_file.name
+            
+        try:
+            loader = Docx2txtLoader(temp_file_path)
+            documents = loader.load()
+        finally:
+            # Clean up the temporary file
+            os.unlink(temp_file_path)
     
     elif ext==".txt":
         doc_byte = download_file(file_id)
-        with tempfile.NamedTemporaryFile(suffix=ext) as temp_file:
+        # Use delete=False to keep the file until we manually delete it
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_file:
             temp_file.write(doc_byte)
             temp_file.flush()
-            loader = TextLoader(temp_file.name, encoding="utf-8")
+            temp_file_path = temp_file.name
+            
+        try:
+            loader = TextLoader(temp_file_path, encoding="utf-8")
+            documents = loader.load()
+        finally:
+            # Clean up the temporary file
+            os.unlink(temp_file_path)
     else:
         creds_dict = get_user_credentials()[0]
         credentials = Credentials(
@@ -93,7 +111,8 @@ def load_document(file_id, ext=None):
             file_ids=[file_id],
             scopes=["https://www.googleapis.com/auth/drive.file"]
         )
-    documents = loader.load()
+        documents = loader.load()
+        
     text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     docs = text_splitter.split_documents(documents)
     for doc in docs:
@@ -170,24 +189,30 @@ def load_audio(file_id, ext, denoise=True):
 
 def load_videos(file_id, extension=".mp4"):
     video_bytes = download_file(file_id)
-    with tempfile.NamedTemporaryFile(suffix=extension) as temp_file:
-    # Write bytes to the temp file
+    # Use delete=False to keep the file until we manually delete it
+    with tempfile.NamedTemporaryFile(suffix=extension, delete=False) as temp_file:
+        # Write bytes to the temp file
         temp_file.write(video_bytes)
         temp_file.flush()  # ensure all data is written
+        temp_file_path = temp_file.name
 
+    try:
         # Load into MoviePy
-        clip = VideoFileClip(temp_file.name)
+        clip = VideoFileClip(temp_file_path)
         print("Duration (s):", clip.duration)
         
         # Example: extract audio
         print("Extracting audio...")
         audio = clip.audio
-        with tempfile.NamedTemporaryFile(suffix=".wav") as audio_file:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as audio_file:
             audio.write_audiofile(audio_file.name)
             audio_file.flush()
+            audio_file_path = audio_file.name
+            
+        try:
             # Process audio bytes directly
             recognizer = sr.Recognizer()
-            with sr.AudioFile(audio_file.name) as source:
+            with sr.AudioFile(audio_file_path) as source:
                 audio_data = recognizer.record(source)
                 try:
                     text = recognizer.recognize_google(audio_data)
@@ -196,8 +221,11 @@ def load_videos(file_id, extension=".mp4"):
                         supabase.table("documents").insert({"content": chunk}).execute()
                 except (sr.UnknownValueError, sr.RequestError) as e:
                     print(f"Audio processing error: {e}")
+        finally:
+            # Clean up the audio temp file
+            os.unlink(audio_file_path)
 
-        print("Extratings frames...")
+        print("Extracting frames...")
         with tempfile.TemporaryDirectory() as tmpdir:
             # Write frames to temp directory
             clip.write_images_sequence(
@@ -212,6 +240,13 @@ def load_videos(file_id, extension=".mp4"):
                     base64_str = base64.b64encode(frame_bytes).decode("utf-8")
                     data_uri = f"data:image/png;base64,{base64_str}"
                     supabase.table("documents").insert({"content": data_uri}).execute()
+        
+        # Close the clip to free resources
+        clip.close()
+        
+    finally:
+        # Clean up the video temp file
+        os.unlink(temp_file_path)
 
 def populate_vector_db(files=None):
     load_documents()
@@ -224,21 +259,23 @@ def populate_vector_db(files=None):
 
 
 def load_any_file(file_id, ext, populate_db=False):
-
-    if ext in [".png", ".jpg", ".jpeg", ".svg"]:
-        load_image(file_id, extension=ext)
-    elif ext in [".mp4", ".mov", ".avi", ".mkv"]:
-        load_videos(file_id, extension=ext)
-    elif ext in [".mp3", ".wav", ".flac", ".aac"]:
-        load_audio(file_id, ext=ext, denoise=True)
-    elif ext in [".txt", ".pdf", ".docx"]:
-        if populate_db:
-            if ext in [".txt", ".docx"]:
+    try:
+        if ext in [".png", ".jpg", ".jpeg", ".svg"]:
+            load_image(file_id, extension=ext)
+        elif ext in [".mp4", ".mov", ".avi", ".mkv"]:
+            load_videos(file_id, extension=ext)
+        elif ext in [".mp3", ".wav", ".flac", ".aac"]:
+            load_audio(file_id, ext=ext, denoise=True)
+        elif ext in [".txt", ".pdf", ".docx"]:
+            if populate_db:
+                if ext in [".txt", ".docx"]:
+                    load_document(file_id, ext=ext)
+            else:
                 load_document(file_id, ext=ext)
         else:
-            load_document(file_id, ext=ext)
-    else:
-        print(f"Unsupported file extension: {ext}")
+            print(f"Unsupported file extension: {ext}")
+    except Exception as e:
+        print(f"Error loading file: {e}")
     
 
 
